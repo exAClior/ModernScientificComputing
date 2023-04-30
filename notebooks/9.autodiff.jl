@@ -14,876 +14,477 @@ macro bind(def, element)
     end
 end
 
-# ╔═╡ 03d7776f-1ae1-4305-8638-caa82837166a
+# ╔═╡ f2e3f609-33ff-4798-bf6b-f69ab5209519
 using PlutoUI
 
-# ╔═╡ f375e09d-cfe2-4ca8-a2c1-32d11dd0b236
+# ╔═╡ 45bc0bb7-fcd1-4527-a51f-05ab7df03dc8
 using Plots
 
-# ╔═╡ 078d0638-7540-4ca4-bc11-b77b2c7f28c4
-using LinearAlgebra
+# ╔═╡ 62dd6d53-7f55-4933-95ae-2350d1992cf6
+using FiniteDifferences
 
-# ╔═╡ 24ace4f1-3801-4586-93cb-dcaecf1df9a3
-using Test
+# ╔═╡ 4647fb94-2b5d-467a-8952-5aba5da87527
+using BenchmarkTools
 
-# ╔═╡ c0992773-4324-4c22-a806-9ec7bd135a2f
-using Luxor
+# ╔═╡ f6cd50b4-ce0a-11ed-01cf-63021b4eb012
+using ForwardDiff
 
-# ╔═╡ c91e28af-d372-429b-b0c1-e6579b6230d4
-TableOfContents()
+# ╔═╡ 4d5d8755-7774-4364-aba4-cb69ed898809
+using Enzyme
 
-# ╔═╡ 50272a9d-5040-413c-84f5-69ffe06b133a
+# ╔═╡ 838b51c0-3987-4fb4-b8b8-1799f724ecd6
+md"""
+```math
+\newcommand{\comment}[1]{{\bf  \color{blue}{\text{◂~ #1}}}}
+```
+"""
+
+# ╔═╡ 385dda1d-8cab-42ee-9242-132032d66b7f
 html"""
-<button onclick="present();"> present</button>
+<button onclick="present()"> present </button>
 """
 
-# ╔═╡ 3bc7e1c5-4d06-4b2d-adbd-20935f8c54b2
-ts = collect(0.0:0.5:10.0)
+# ╔═╡ 79921035-aafb-478c-ba36-e5655a4515dd
+TableOfContents(depth=2)
 
-# ╔═╡ 69ea48d1-58c2-4e7d-a351-c4d96dcbed55
-ys = [2.9, 2.7, 4.8, 5.3, 7.1, 7.6, 7.7, 7.6, 9.4, 9.0, 9.6, 10.0, 10.2, 9.7, 8.3, 8.4, 9.0, 8.3, 6.6, 6.7, 4.1]
+# ╔═╡ 1dace657-b9ca-4ec2-81c9-209c823e9adb
+md"# The four methods to differentiate a function"
 
-# ╔═╡ 42fd3d15-40b6-4051-913b-293bd953028c
-scatter(ts, ys; label="", xlabel="t", ylabel="y", ylim=(0, 10.5))
+# ╔═╡ f76cf1c5-3801-4c6d-ba10-195a69e63e45
+md"""
+“谁要你教，不是草头底下一个来回的回字么？”
 
-# ╔═╡ af03fa73-40ce-45f5-9f4f-d8c7809f7166
-A2 = [ones(length(ts)) ts ts.^2]
+孔乙己显出极高兴的样子，将两个指头的长指甲敲着柜台，点头说，“对呀对呀！……回字有四样写法，你知道么？”我愈不耐烦了，努着嘴走远。
 
-# ╔═╡ c4b34c32-fc00-4a7c-8089-edd35c23bd65
-A2
+孔乙己刚用指甲蘸了酒，想在柜上写字，见我毫不热心，便又叹一口气，显出极惋惜的样子。
+"""
 
-# ╔═╡ 7209792f-4944-4d06-9098-ae7ce1cea103
-A2inv = pinv(A2)
+# ╔═╡ 86874020-ec91-44c1-83cc-483cb0cd9337
+md"""
+# The history of autodiff
+"""
 
-# ╔═╡ d9a623cd-74fb-4404-8f62-30ed24a82ed7
-x2 = pinv(A2) * ys
+# ╔═╡ ada143c0-40a1-457f-b680-be9edb3e93c8
+md"""
+* 1964 ~ Robert Edwin Wengert, A simple automatic derivative evaluation program. ``\comment{first forward mode AD}``
+* 1970 ~ Seppo Linnainmaa, Taylor expansion of the accumulated rounding error. ``\comment{first backward mode AD}``
+* 1986 ~ Rumelhart, D. E., Hinton, G. E., and Williams, R. J., Learning representations by back-propagating errors.``\comment{bring AD to machine learning people.}``
+* 1992 ~ Andreas Griewank, Achieving logarithmic growth of temporal and spatial complexity in reverse automatic differentiation. ``\comment{also known as optimal checkpointing.}``
+* 2000s ~ The boom of tensor based AD frameworks for machine learning.
+* 2018 ~ Re-inventing AD as differential programming ([wiki](https://en.wikipedia.org/wiki/Differentiable_programming).)
+![](https://qph.fs.quoracdn.net/main-qimg-fb2f8470f2120eb49c8142b08d9c4132)
+* 2020 ~ Moses, William and Churavy, Valentin, Instead of Rewriting Foreign Code for Machine Learning, Automatically Synthesize Fast Gradients ``\comment{AD on LLVM}``.
+"""
 
-# ╔═╡ 72cb2367-c4bc-4ed1-b942-4144881e558f
-norm(A2 * x2 - ys)^2
+# ╔═╡ 89915416-29bc-47c4-b11e-c70be1ef858b
+md"# Differentiating the Bessel function"
 
-# ╔═╡ 0653d1cc-febe-4b97-9cea-ccf1ea5ef77c
+# ╔═╡ 29415653-52fc-4210-9cca-551c6f5d4d2c
+md"""
+```math
+    J_\nu(z) = \sum\limits_{n=0}^{\infty} \frac{(z/2)^\nu}{\Gamma(k+1)\Gamma(k+\nu+1)} (-z^2/4)^{n}
+```
+"""
+
+# ╔═╡ 53c29044-94d3-4470-bacb-e72bd2401d1c
+md"## Poorman's Bessel function"
+
+# ╔═╡ 8da8ed7e-bfd2-4be0-a764-ad04566b9632
+function poor_besselj(ν, z::T; atol=eps(T)) where T
+    k = 0
+    s = (z/2)^ν / factorial(ν)
+    out = s
+    while abs(s) > atol
+        k += 1
+        s *= (-1) / k / (k+ν) * (z/2)^2
+        out += s
+    end
+    out
+end
+
+# ╔═╡ c28f22cc-71b7-4339-8c81-9d76d2244c94
+md"""
+In each step, the state transfer can be described as $(k_i, s_i, out_i) \rightarrow (k_{i+1}, s_{k+1}, out_{i+1})$.
+"""
+
+# ╔═╡ ff53a172-634f-438f-a04a-1481ac20f140
 let
-	plt = scatter(ts, ys; xlabel="t", ylabel="y", ylim=(0, 10.5), label="data")
-	tt = 0:0.1:10
-	plot!(plt, tt, map(t->x2[1] + x2[2]*t + x2[3] * t^2, tt); label="fitted")
+	x = 0.0:0.01:10
+	plt = plot([], []; label="", xlabel="x", ylabel="y")
+	for i=0:5
+		yi = poor_besselj.(i, x)
+		plot!(plt, x, yi; label="J(ν=$i)", lw=2)
+	end
+	plt
 end
 
-# ╔═╡ 3cfd45c5-4618-4b9a-a931-0b0cb7f12cf1
-pinv(A2)
+# ╔═╡ c763e489-a6a9-42ac-8da1-a2ba48a0f1a8
+@bind select_gradient_method Select(["Manual", "Forward", "Backward", "FiniteDiff"])
 
-# ╔═╡ 78bd6ebd-a710-4cbb-a2a4-6ac663eb64d5
-cond(A2)
-
-# ╔═╡ 7e8d4ef5-6b3a-4588-8e1b-5a491860f9f9
-opnorm(A2) * opnorm(pinv(A2))
-
-# ╔═╡ 8e07091c-0b4b-490a-9cf7-dad94c3fa08a
-maximum(svd(A2).S)/minimum(svd(A2).S)
-
-# ╔═╡ f240e540-65a2-4f82-8006-a1d2a9955d1b
+# ╔═╡ 5e782b60-3721-40d2-ae61-69edb4fc50f0
 let
-	p = 12345678
-	q = 1
-	p - sqrt(p^2 + q)
+	x = 0.0:0.01:10
+	plt = plot([], []; label="", xlabel="x", ylabel="y")
+	for i=0:3
+		yi = poor_besselj.(i, x)
+		if select_gradient_method == "Forward"
+			gi = [autodiff(Forward, poor_besselj, i, Enzyme.Duplicated(xi, 1.0))[1] for xi in x]
+		elseif select_gradient_method == "Manual"
+			gi = ((i == 0 ? -poor_besselj.(i+1, x) : poor_besselj.(i-1, x)) - poor_besselj.(i+1, x)) ./ 2
+		elseif select_gradient_method == "Backward"
+			gi = [autodiff(Reverse, poor_besselj, i, Enzyme.Active(xi))[1] for xi in x]
+		elseif select_gradient_method == "FiniteDiff"
+			gi = [autodiff(Reverse, poor_besselj, i, Enzyme.Active(xi))[1] for xi in x]
+		end
+		plot!(plt, x, yi; label="J(ν=$i)", lw=2, color=i)
+		plot!(plt, x, gi; label="g(ν=$i)", lw=2, color=i, ls=:dash)
+	end
+	plt
 end
 
-# ╔═╡ f4acf2cd-a183-4986-91f5-da6729759c84
-let # more accurate
-	p = 12345678
-	q = 1
-	q/(p + sqrt(p^2 + q))
-end
+# ╔═╡ 1d2a3579-b9c4-4ffb-819c-2689d3f1b83c
+md"""
+# Finite difference
 
-# ╔═╡ 135c30d2-2168-4e88-82e3-673bbb4764d9
-rectQ = Matrix(qr(A2).Q)
-
-# ╔═╡ 573b545b-314a-4938-8ae8-1be006a918ae
-qr(A2).R
-
-# ╔═╡ 7d4d74ed-2de8-4b95-88c4-92d1398a7c4c
-rectQ * qr(A2).R ≈ A2
-
-# ╔═╡ 0322976d-d3a2-42ba-ab55-8d75796b0388
-struct HouseholderMatrix{T} <: AbstractArray{T, 2}
-	v::Vector{T}
-	β::T
-end
-
-# ╔═╡ 525d5273-e10f-4669-afc4-7a527ff25acf
-Base.size(A::HouseholderMatrix) = (length(A.v), length(A.v))
-
-# ╔═╡ d9a7fbb0-243e-452c-ad23-ed116bf1849c
-Base.size(A::HouseholderMatrix, i::Int) = i == 1 || i == 2 ? length(A.v) : 1
-
-# ╔═╡ 9c9ea963-64db-437d-8509-d334b27b57d4
-# some other methods to avoid ambiguity error
-
-# ╔═╡ db6114bc-b253-4c7b-948c-1ad2036fd4b8
-Base.inv(A::HouseholderMatrix) = A
-
-# ╔═╡ 6c2555d4-5d84-42e0-8dd3-6e5781037a95
-Base.adjoint(A::HouseholderMatrix) = A
-
-# ╔═╡ 42812c21-229f-4e4a-b7ad-0d0317061776
-inv(A2' * A2) * A2'
-
-# ╔═╡ 5c3d483b-c1a4-4af9-b06f-f01b306d383b
-A2' * A2
-
-# ╔═╡ 4979c507-72c3-4cbb-8a7e-27cf4c9c4660
-A2' * ys
-
-# ╔═╡ 8782019c-f4b4-4b68-9d84-61aec009fe50
-rectQ' * rectQ
-
-# ╔═╡ 32258e09-1dd7-4954-be0f-98db3c2fb7ed
-@testset "householder property" begin
-	v = randn(3)
-	β = 2/norm(v, 2)^2
-	H = I - β * v * v'
-	# symmetric
-	@test H' ≈ H
-	# reflexive
-	@test H^2 ≈ I
-	# orthogonal
-	@test H' * H ≈ I
-end
-
-# ╔═╡ 64a46e12-ae2e-445f-b870-3389e15bcc5b
-# the `mul!` interfaces can take two extra factors.
-function left_mul!(B, A::HouseholderMatrix)
-	B .-= (A.β .* A.v) * (A.v' * B)
-	return B
-end
-
-# ╔═╡ 0c263746-b0a3-42df-a52b-9f9f51341db2
-# the `mul!` interfaces can take two extra factors.
-function right_mul!(A, B::HouseholderMatrix)
-	A .= A .- (A * (B.β .* B.v)) * B.v'
-	return A
-end
-
-# ╔═╡ 6e6b7827-86a1-4f20-801e-7d9c385d0d26
-Base.getindex(A::HouseholderMatrix, i::Int, j::Int) = A.β * A.v[i] * conj(A.v[j])
-
-# ╔═╡ db07252c-d1c1-46af-a16e-9a7d1e91ce4f
-md"""# Review: Solving linear equations
-Given $A\in \mathbb{R}^{n\times n}$ and $b \in \mathbb{R}^n$, find $x \in \mathbb{R}^n$ s.t.
+First order forward Difference
 ```math
-Ax = b
+\frac{\partial f}{\partial x} \approx \frac{f(x+\Delta) - f(x)}{\Delta}
 ```
 
-1. LU factorization with Gaussian Elimination (with Pivoting)
-2. Sensitivity analysis: Condition number
-2. Computing matrix inverse with Guass-Jordan Elimination
+
+First order backward Difference
+```math
+\frac{\partial f}{\partial x} \approx \frac{f(x) - f(x-\Delta)}{\Delta}
+```
+
+
+First order central Difference
+```math
+\frac{\partial f}{\partial x} \approx \frac{f(x+\Delta) - f(x-\Delta)}{2\Delta}
+```
+
+Table of finite difference coefficient: [wiki page](https://en.wikipedia.org/wiki/Finite_difference_coefficient).
+
 """
 
-# ╔═╡ 039e70f8-b8cf-11ed-311e-4d770652d6a9
-md"# Linear Least Square Problem"
-
-# ╔═╡ 1285a0ff-2290-49fb-bd16-74ebb155e6ff
-md"## Data Fitting"
-
-# ╔═╡ c12b4f4e-81d7-4b8a-8f77-b4e940199064
+# ╔═╡ 742504f5-8ae3-4388-8f05-f0a256815cbc
 md"""
-Given $m$ data points $(t_i, y_i)$, we wish to find the $n$-vector $x$ of parameters that gives the "best fit" to the data by the model function $f(t, x)$, with
+## Example: central finite difference to the 4th order
+1. Check the table
+
+|  -2  | -1  | 0 | 1 | 2 |
+| --- | --- | --- | --- | --- |
+| 1/12 | −2/3 | 0 | 2/3 | −1/12 |
+
+2. Apply the fomula
 ```math
-f: \mathbb{R}^{n+1} \rightarrow \mathbb{R}
-```
-```math
-\min_x\sum_{i=1}^m (y_i - f(t_i, x))^2
+\frac{\partial f}{\partial x} \approx \frac{f(x-2\Delta) - 8f(x-\Delta) + 8f(x+\Delta) - f(x+2\Delta)}{12\Delta}
 ```
 """
 
-# ╔═╡ 19083b13-3b40-43ea-9535-975c2f1be8bb
-md"## Example"
-
-# ╔═╡ 26461708-def3-44b5-bb8f-4eb9f75c66d5
+# ╔═╡ 1fbdd9c5-fb52-4bcc-9a6a-156ab8bfe4f6
 md"""
 ```math
-f(x) = x_0 + x_1 t + x_2 t^2
-```
-"""
-
-# ╔═╡ f0b7e196-80dd-4cd2-a8ce-3b99eee32580
-md"""
-```math
-Ax = \left(\begin{matrix}
-1 & t_1 & t_1^2\\
-1 & t_2 & t_2^2\\
-1 & t_3 & t_3^2\\
-1 & t_4 & t_4^2\\
-1 & t_5 & t_5^2\\
-\vdots & \vdots & \vdots
+\left(\begin{matrix}
+f(x-2\Delta)\\f(x-\Delta)\\f(x)\\f(x+\Delta)\\f(x+2\Delta)
+\end{matrix}\right) \approx \left(\begin{matrix}
+1 & (-2)^1 & (-2)^{2} & (-2)^3 &  & (-2)^4\\
+1 & (-1)^1 & (-1)^{2} & (-1)^3 &  & (-1)^4\\
+1 & 0 & 0 & 0 &  & 0\\
+1 & (1)^1 & (1)^{2} & (1)^3 &  & (1)^4\\
+1 & (2)^1 & (2)^{2} & (2)^3 &  & (2)^4
+\end{matrix}\right)\left(\begin{matrix}
+f(x)\\f'(x)\Delta\\f''(x)\Delta^2/2\\f'''(x)\Delta^3/6\\f''''(x)\Delta^4/24
 \end{matrix}\right)
-\left(\begin{matrix} x_1 \\ x_2 \\ x_3\end{matrix}\right) \approx
-\left(\begin{matrix}y_1\\ y_2\\ y_3 \\ y_4 \\ y_5\\\vdots\end{matrix}\right) = b
 ```
+
+Let the finite difference coefficients be $\vec \alpha^T = (\alpha_{-2}, \alpha_{-1}, \alpha_{0}, \alpha_{1}, \alpha_{2})$, we want $\alpha^T \vec f= f'(x)\Delta +O(\Delta^5)$, where $\vec f=A \vec g$ is the vector on the left side. $\vec \alpha$ can be solved by $A^T \backslash (0, 1, 0, 0, 0)^T$
 """
 
-# ╔═╡ e4e444bf-0d07-4f6c-a104-ac0569928347
-md"# Normal Equations"
+# ╔═╡ cee92def-01e4-4199-a964-b81412a0563f
+let
+	b = [0.0, 1, 0, 0, 0]
+	A = [i^j for i=-2:2, j=0:4]
+	A' \ b
+end
 
-# ╔═╡ 5124f2d6-37e3-4cf9-82df-eb50372271cb
-md"The goal: minimize $\|Ax - b\|_2^2$"
+# ╔═╡ b2d72996-27a0-467e-8c2d-20afcc28b24c
+[i^j for i=-2:2, j=0:4]
 
-# ╔═╡ dbd8e759-f5bf-4239-843f-2c394e7665c1
+# ╔═╡ 84182832-c653-49df-aa55-a78181974612
+central_fdm(5, 1)(x->poor_besselj(2, x), 0.5)
+
+# ╔═╡ 78e9ebd0-92eb-4fdc-b440-56b4fdaf7a60
+@benchmark central_fdm(5, 1)(y->poor_besselj(2, y), x) setup=(x=0.5)
+
+# ╔═╡ 54f754d5-6cb4-47ef-9b19-aa8c47c14b36
+md"# Forward mode automatic differentiation"
+
+# ╔═╡ f25a2d8e-5cd5-4df7-bd39-2830d6e2dea6
 md"""
+Forward mode AD attaches a infitesimal number $\epsilon$ to a variable, when applying a function $f$, it does the following transformation
 ```math
-A^T Ax = A^T b
+\begin{align}
+    f(x+g \epsilon) = f(x) + f'(x) g\epsilon + \mathcal{O}(\epsilon^2)
+\end{align}
+```
+
+The higher order infinitesimal is ignored. 
+
+**In the program**, we can define a *dual number* with two fields, just like a complex number
+```
+f((x, g)) = (f(x), f'(x)*g)
 ```
 """
 
-# ╔═╡ 58834440-1e0a-432b-9be2-41db98fa2742
-md"## Pseudo-Inverse"
+# ╔═╡ 4b3a4f50-4339-43e5-9bc1-473151c1f436
+res = sin(ForwardDiff.Dual(π/4, 2.0))
 
-# ╔═╡ 81b6f4cb-a6c8-4a86-91f7-ac88646651f8
+# ╔═╡ 9359eddc-bfbb-428d-8197-00d1e9cd8eeb
+res === ForwardDiff.Dual(sin(π/4), cos(π/4)*2.0)
+
+# ╔═╡ bbadece5-e92a-42f5-998c-6149c067b130
 md"
+We can apply this transformation consecutively, it reflects the chain rule.
 ```math
-A^{+} = (A^T A)^{-1}A^T
-```
-```math
-x = A^+ b
+\begin{align}
+\frac{\partial \vec y_{i+1}}{\partial x} &= \boxed{\frac{\partial \vec y_{i+1}}{\partial \vec y_i}}\frac{\partial \vec y_i}{\partial x}\\
+&\text{local Jacobian}
+\end{align}
 ```
 "
 
-# ╔═╡ 291caf11-bacd-4171-8408-410b50f49183
-md"Pseudoinverse"
+# ╔═╡ 2ec9461e-c7a3-43f5-9fef-fb52980fa196
+md"""
+**Example:** Computing two gradients $\frac{\partial z\sin x}{\partial x}$ and $\frac{\partial \sin^2x}{\partial x}$ at one sweep
+"""
 
-# ╔═╡ 800b3257-0449-4d0d-8124-5b6ca7882902
-md"The julia version"
+# ╔═╡ d2222941-f31b-4411-aac8-6de450aa2fbe
+autodiff(Forward, poor_besselj, 2, Duplicated(0.5, 1.0))[1]
 
-# ╔═╡ e6435900-79be-46de-a7aa-7308df1e486a
-md"## Example"
+# ╔═╡ 5db5eef5-d217-4a61-9230-62ada8b7606f
+@benchmark autodiff(Forward, poor_besselj, 2, Duplicated(x, 1.0))[1] setup=(x=0.5)
 
-# ╔═╡ 6d7d33ff-1b2b-4f03-b4d4-a7f31dfd3b74
-md"## The geometric interpretation"
+# ╔═╡ 0956c11a-63d7-4ab1-a99b-9056208759ac
+md"""
+**What if we want to compute gradients for multiple inputs?**
 
-# ╔═╡ 1684bff0-7ad0-4921-be48-a4bfdcbde81d
-md"The residual is $b-Ax$"
+The computing time grows **linearly** as the number of variables that we want to differentiate. But does not grow significantly with the number of outputs.
+"""
 
-# ╔═╡ eeb922e4-2e63-4d97-88c8-3951613695f5
+# ╔═╡ 38cc8a4d-0107-4dee-b0f0-76959ad9cc92
+md"""
+# Reverse mode automatic differentiation
+"""
+
+# ╔═╡ 17e21230-2299-4dda-87ef-40e629d66213
+md"On the other side, the back-propagation can differentiate **many inputs** with respect to a **single output** efficiently"
+
+# ╔═╡ 38ca5970-78ed-495b-9d69-74a6a22ec027
 md"""
 ```math
-A^T(b - Ax) = 0
+\begin{align}
+    \frac{\partial \mathcal{L}}{\partial \vec y_i} = \frac{\partial \mathcal{L}}{\partial \vec y_{i+1}}&\boxed{\frac{\partial \vec y_{i+1}}{\partial \vec y_i}}\\
+&\text{local jacobian?}
+\end{align}
 ```
 """
 
-# ╔═╡ a5034aeb-e74e-47ed-9d0a-4eb3d076dfbe
-md"## Solving Normal Equations with Cholesky decomposition"
+# ╔═╡ 18065ade-1e2d-4b37-a075-8de966de306d
+autodiff(Reverse, poor_besselj, 2, Enzyme.Active(0.5))[1]
 
-# ╔═╡ bb097284-3e30-489c-abac-f0c6b71edfd9
+# ╔═╡ 4a4d5c19-a784-4285-8ea0-f2203cd80eb3
+@benchmark autodiff(Reverse, poor_besselj, 2, Enzyme.Active(x))[1] setup=(x=0.5)
+
+# ╔═╡ 298873a4-ba02-43c3-9507-ce99a00f7245
+md"### How to visit local Jacobians in the reversed order? "
+
+# ╔═╡ 62484b76-033b-455a-bf51-d1f57adbc8a0
 md"""
-Step 1: Rectangular → Square
-```math
-A^TAx = A^T b
-```
-
-Step 2: Square → Triangular
-```math
-A^T A = LL^T
-```
-
-Step 3: Solve the triangular linear equation
+Caching intermediate results in a stack!
 """
 
-# ╔═╡ 0f6b8814-77a1-4b1f-8183-42bc6ea412e0
-md"## Issue: The Condition-Squaring Effect"
-
-# ╔═╡ 04acb542-dc1f-4c45-b6fd-62f387a81963
-md"The conditioning of a square linear system $Ax = b$ depends only on the matrix, while the conditioning of a least squares problem $Ax \approx b$ depends on both $A$ and $b$."
-
-# ╔═╡ 080677b7-cac7-4bbe-a4b0-71e18ca41b1b
+# ╔═╡ 52fa22a0-98ae-4d32-884d-b40cdb9cff62
 md"""
-```math
-A = \left(\begin{matrix}1 & 1\\ \epsilon & 0 \\ 0 & \epsilon \end{matrix}\right)
-```
+# Rule based autodiff
 """
 
-# ╔═╡ 5933200f-5aab-4937-b3df-9af1f81a5eaf
-md"The definition of thin matrix condition number"
-
-# ╔═╡ 68d9c2b1-bccf-48ec-9428-e0c65a1618ad
+# ╔═╡ 721bfffc-b76f-4d0d-8ed6-be0c327eef59
 md"""
-## The algorithm matters
-"""
-
-# ╔═╡ 96f7d3c9-fecc-4b5e-94ff-e8e9af74ce63
-md"$x^2 - 2px - q$"
-
-# ╔═╡ cb7a0e40-0d26-4330-abd0-cd730261b6b4
-md"""
-Algorithm 1:
+The backward rule of the Bessel function is
 ```math
-p - \sqrt{p^2 + q}
-```
-Algorithm 2:
-```math
-\frac{q}{p+\sqrt{p^2+q}}
+\begin{align}
+&J'_{\nu}(z) =  \frac{J_{\nu-1}(z) - J_{\nu+1}(z) }2\\
+&J'_{0}(z) =  - J_{1}(z)
+\end{align}
 ```
 """
 
-# ╔═╡ b0c7ed86-2127-46a6-9f98-547cdf591d23
-md"# Orthogonal Transformations"
+# ╔═╡ 0aaa152e-29cf-43f4-8a07-ad7dd4a5f304
+0.5 * (poor_besselj(1, 0.5) - poor_besselj(3, 0.5))
 
-# ╔═╡ b84c4a00-37ea-453a-b69d-555ffcd8b358
+# ╔═╡ ee1f777e-c8fb-4139-aae8-503ed4fd2391
+@benchmark 0.5 * (poor_besselj(1, x) - poor_besselj(3, x)) setup=(x=0.5)
+
+# ╔═╡ 88199efc-975c-4971-8481-3319209bf139
 md"""
-```math
-A = QR
-```
-```math
-Rx = Q^{T}b
-```
+# Deriving the backward rule of matrix multiplication
 """
 
-# ╔═╡ 7b48e6ea-6fb7-44b5-9407-1fb38bf4f009
+# ╔═╡ 3d1bfe11-a863-4a63-9bb7-0a052dc04d25
+md"Please check [blog](https://giggleliu.github.io/posts/2019-04-02-einsumbp/)"
+
+# ╔═╡ 0e1de67c-592a-408d-849f-984dd47664cd
 md"""
-## Gist of QR factoriaztion by Householder reflection.
+## Rule based or not?
 """
 
-# ╔═╡ 64be680f-3a97-4b92-b3fd-9c7a27bccb01
-md"""
-Let $H_k$ be an orthogonal matrix, i.e. $H_k^T H_k = I$
-```math
-H_n \ldots H_2H_1 A = R
-```
-```math
-Q = H_1^{T} H_2 ^{T}\ldots H_n^{T}
-```
+# ╔═╡ 164c3f50-cb0c-4f74-8580-303dedbc712b
+html"""
+<table>
+<tr>
+<th width=200></th>
+<th width=300>rule based</th>
+<th width=300>differential programming</th>
+</tr>
+<tr style="vertical-align:top">
+<td>meaning</td>
+<td>defining backward rules manully for functions on tensors</td>
+<td>defining backward rules on a limited set of basic scalar operations, and generate gradient code using source code transformation</td>
+</tr>
+<tr style="vertical-align:top">
+<td>pros and cons</td>
+<td>
+<ol>
+<li style="color:green">Good tensor performance</li>
+<li style="color:green">Mature machine learning ecosystem</li>
+<li style="color:red">Need to define backward rules manually</li>
+</ol>
+</td>
+<td>
+<ol>
+<li style="color:green">Reasonalbe scalar performance</li>
+<li style="color:red">hard to utilize BLAS</li>
+</ol>
+</td>
+<td>
+</td>
+</tr>
+<tr style="vertical-align:top">
+<td>packages</td>
+<td>Jax<br>PyTorch</td>
+<td><a href="http://tapenade.inria.fr:8080/tapenade/">Tapenade</a><br>
+<a href="http://www.met.reading.ac.uk/clouds/adept/">Adept</a><br>
+<a href="https://github.com/EnzymeAD/Enzyme">Enzyme</a>
+</td>
+</tr>
+</table>
 """
 
-# ╔═╡ 6d519ffa-ea7e-4a95-a50f-f9421651cd20
+# ╔═╡ b648761c-1fa7-4e70-b0d6-654c51b2935f
 md"""
-## Review of Elimentary Elimination Matrix
-```math
-M_k = I_n  - \tau e_k^T
-```
-```math
-\tau = \left(0, \ldots, 0, \tau_{k+1},\ldots,\tau_n\right)^T, ~~~ \tau_i = \frac{v_i}{v_k}.
-```
-Keys:
-* Gaussian elimination is a recursive algorithm.
+# Obtaining Hessian
 """
 
-# ╔═╡ a2832af2-c007-45d4-8fd7-210f85e3913e
+# ╔═╡ 2fac953b-7a04-4fc1-a54d-a2062b590b20
 md"""
-## Householder reflection
-Let $v \in \mathbb{R}^m$ be nonzero, An $m$-by-$m$ matrix $P$ of the form
-```math
-P = 1-\beta vv^T, ~~~\beta = \frac{2}{v^Tv}
-```
-is a Householder reflection.
+Hessian is the Jacobian of the gradient. We can use **forward over backward**.
 """
 
-# ╔═╡ 2ee2e080-659d-4d85-9733-065efe6d4ce8
-md"(the picture of householder reflection)"
-
-# ╔═╡ 73bd9d1b-4890-48cf-8ecb-83dd6e8025ba
-md"## Properties of Householder reflection"
-
-# ╔═╡ 93c9f34c-ce1d-4940-8a24-1a5ce8aa7e01
-md"Householder reflection is symmetric and orthogonal."
-
-# ╔═╡ eb46cec9-5812-43aa-b192-2c84d5c5061e
-md"## Project a vector to $e_1$"
-
-# ╔═╡ d7c22484-3970-4c11-864c-a582d4034f7d
+# ╔═╡ 18ae2723-f947-4ff6-864e-2dd4a0bb32f9
 md"""
-```math
-P x = \beta e_1
-```
-```math
-v = x \pm \|x\|_2 e_1
-```
+# Optimal checkpointing, towards solving the memory wall problem
 """
 
-# ╔═╡ f0dabeb6-2c30-4556-aeb8-03c51106f012
-function householder_matrix(v::AbstractVector{T}) where T
-	v = copy(v)
-	v[1] -= norm(v, 2)
-	return HouseholderMatrix(v, 2/norm(v, 2)^2)
-end
-
-# ╔═╡ a20de17c-33ca-4807-918f-3a58d641ed69
-let
-	A = Float64[1 2 2; 4 4 2; 4 6 4]
-	hm = householder_matrix(view(A,:,1))
-	hm * A
-end
-
-# ╔═╡ edecc73a-021f-4e0e-8d2e-dbafe537f0eb
-md"## Triangular Least Squares Problems"
-
-# ╔═╡ d9331fb3-8c04-4082-bdf5-0a1d09a65276
-md"## QR Factoriaztion"
-
-# ╔═╡ c10b85f2-be07-4fd4-a66c-50ac8e54fdb8
-md"## Givens Rotations"
-
-# ╔═╡ 2d41b937-1406-4db8-a453-f0d7ca042434
-function draw_vectors(initial_vector, final_vector, angle)
-	@drawsvg begin
-		origin()
-		circle(0, 0, 100, :stroke)
-		setcolor("gray")
-		a, b = initial_vector
-		Luxor.arrow(Point(0, 0), Point(a, -b) * 100)
-		setcolor("black")
-		c, d = final_vector
-		Luxor.arrow(Point(0, 0), Point(c, -d) * 100)
-		Luxor.text("θ = $angle", 0, 50; valign=:center, halign=:center)
-	end 600 400
-end
-
-# ╔═╡ 51e387ff-1619-4c3f-8e52-748c0bddd9cf
-@bind angle Slider(0:0.03:2*3.14; show_value=true)
-
-# ╔═╡ 925d3781-a469-4943-b951-1688d705cb97
+# ╔═╡ 02ca5e2f-1705-4de8-bd89-0b4b69e1fee7
 md"""
+# Game: Pass the ball
+
+In each step, if you have the ball, you pick one of the following actions
+1. raise your hand, and pass the ball to the next,
+2. pass the ball to the next without raising your hand,
+2. only if you are the last one in the queue, you can left the queue and pass the ball to those raising hands.
+Otherwise, you may
+1. put down your hand, or
+2. do nothing.
+
+**Goal: We require the number of raised hands being at most $m$ at the same time, please empty the queue while minimizing the number of ball passings.**
+
+### The connection to checkpointing
+* A person: a computing state $s_k$,
+* The queue: a linear program $s_1, s_2, \ldots, s_n$,
+* Passing ball: program running forward $s_{k}\rightarrow s_{k+1}$,
+* Left queue: the gradient $g_k$ being computed,
+* Rasing hand: create a checkpoint in the main memory,
+* put down the hand: deallocate a checkpoint.
+"""
+
+# ╔═╡ 2f715b1a-2e32-4068-86fd-912d735b307a
+md"# Homeworks
+1. Given the binomial function $\eta(\tau, \delta) = \frac{(\tau + \delta)!}{\tau!\delta!}$, show that the following statement is true.
 ```math
-G = \left(\begin{matrix}
-\cos\theta & -\sin\theta\\
-\sin\theta & \cos\theta
-\end{matrix}\right)
+\eta(\tau,\delta) = \sum_{k=0}^\delta \eta(\tau-1,k)
 ```
-"""
-
-# ╔═╡ bef1e66b-bf43-4e05-a286-693626c61ea6
-rotation_matrix(angle) = [cos(angle) -sin(angle); sin(angle) cos(angle)]
-
-# ╔═╡ 874cbe3e-516e-4f8c-8ad8-e781a5d4af0d
-let
-	initial_vector = [1.0, 0.0]
-	final_vector = rotation_matrix(angle) * initial_vector
-	@info final_vector
-	draw_vectors(initial_vector, final_vector, angle)
-end
-
-# ╔═╡ 50bfec97-0cf8-4a6e-a0e1-13ee391dce69
-md"""
-## Eliminating the $y$ element
-"""
-
-# ╔═╡ 7ae46225-cbbb-4595-adbc-7fd679bf965f
-atan(0.1, 0.5)
-
-# ╔═╡ 385a17c7-2394-492a-8e89-0f402311f5c4
-let
-	initial_vector = randn(2)
-	angle = atan(initial_vector[2], initial_vector[1])
-	final_vector = rotation_matrix(-angle) * initial_vector
-	draw_vectors(initial_vector, final_vector, -angle)
-end
-
-# ╔═╡ 06627dd0-f22d-4fe5-8050-d0a84cac12fe
-md"""
-```math
-\left(
-\begin{matrix}
-1 & 0 & 0 & 0 & 0\\
-0 & c & 0 & s & 0\\
-0 & 0 & 1 & 0 & 0\\
-0 & -s & 0 & c & 0\\
-0 & 0 & 0 & 0 & 1
-\end{matrix}
-\right)
-\left(
-\begin{matrix}
-a_1\\a_2\\a_3\\a_4\\a_5
-\end{matrix}
-\right)=
-\left(
-\begin{matrix}
-a_1\\\alpha\\a_3\\0\\a_5
-\end{matrix}
-\right)
-```
-where $s = \sin(\theta)$ and $c = \cos(\theta)$.
-"""
-
-# ╔═╡ 963cb350-b9b5-4dbe-8b5f-63ce38440e86
-md"## Givens QR Factorization"
-
-# ╔═╡ 5d40252a-4dc3-420d-bd8d-d11abdb07c9b
-struct GivensMatrix{T} <: AbstractArray{T, 2}
-	c::T
-	s::T
-	i::Int
-	j::Int
-	n::Int
-end
-
-# ╔═╡ 64695822-e79c-4e34-912f-2179c674116d
-Base.size(g::GivensMatrix) = (g.n, g.n)
-
-# ╔═╡ 16ee76bf-3968-414b-aa0f-e82fbf3f7911
-Base.size(g::GivensMatrix, i::Int) = i == 1 || i == 2 ? g.n : 1
-
-# ╔═╡ d5812ce2-6333-4777-8016-7978af44a753
-function elementary_elimination_matrix_1(A::AbstractMatrix{T}) where T
-	n = size(A, 1)
-	# create Elementary Elimination Matrices
-	M = Matrix{Float64}(I, n, n)
-	for i=2:n
-		M[i, 1] =  -A[i, 1] ./ A[1, 1]
+2. Given the following program to compute the $l_2$-norm of a vector $x\in R^n$.
+```julia
+function poorman_norm(x::Vector{<:Real})
+	nm2 = zero(real(eltype(x)))
+	for i=1:length(x)
+		nm2 += abs2(x[i])
 	end
-	return M
+	ret = sqrt(nm2)
+	return ret
 end
-
-# ╔═╡ 4e6a21ac-a27a-48a9-b714-6f66b24437c1
-function lufact_naive_recur!(L, A::AbstractMatrix{T}) where T
-	n = size(A, 1)
-	if n == 1
-		return L, A
-	else
-		# eliminate the first column
-		m = elementary_elimination_matrix_1(A)
-		L .= L * inv(m)
-		A .= m * A
-		# recurse
-		lufact_naive_recur!(view(L, 2:n, 2:n), view(A, 2:n, 2:n))
-	end
-	return L, A
-end
-
-# ╔═╡ a10a2522-c4ea-4027-bbd3-3d0762341424
-let
-	A = [1 2 2; 4 4 2; 4 6 4]
-	L = Matrix{Float64}(I, 3, 3)
-	R = copy(A)
-	lufact_naive_recur!(L, R)
-	L * R ≈ A
-end
-
-# ╔═╡ b2e92d06-8731-491c-adbe-ec9f778247c1
-function givens(A, i, j)
-	x, y = A[i, 1], A[j, 1]
-	norm = sqrt(x^2 + y^2)
-	c = x/norm
-	s = y/norm
-	return GivensMatrix(c, s, i, j, size(A, 1))
-end
-
-# ╔═╡ d55be015-9a20-4efd-9be2-a5ecf9545400
-function left_mul!(A::AbstractMatrix, givens::GivensMatrix)
-	for col in 1:size(A, 2)
-		vi, vj = A[givens.i, col], A[givens.j, col]
-		A[givens.i, col] = vi * givens.c + vj * givens.s
-		A[givens.j, col] = -vi * givens.s + vj * givens.c
-	end
-	return A
-end
-
-# ╔═╡ 92e842e9-42b8-45e6-937e-3d2049df9b09
-function right_mul!(A::AbstractMatrix, givens::GivensMatrix)
-	for row in 1:size(A, 1)
-		vi, vj = A[row, givens.i], A[row, givens.j]
-		A[row, givens.i] = vi * givens.c + vj * givens.s
-		A[row, givens.j] = -vi * givens.s + vj * givens.c
-	end
-	return A
-end
-
-# ╔═╡ e6cd8de6-20c6-4d36-93ba-b1a9ed808fc2
-function householder_qr!(Q::AbstractMatrix{T}, a::AbstractMatrix{T}) where T
-	m, n = size(a)
-	@assert size(Q, 2) == m
-	if m == 1
-		return Q, a
-	else
-		# apply householder matrix
-		H = householder_matrix(view(a, :, 1))
-		left_mul!(a, H)
-		# update Q matrix
-		right_mul!(Q, H')
-		# recurse
-		householder_qr!(view(Q, 1:m, 2:m), view(a, 2:m, 2:n))
-	end
-	return Q, a
-end
-
-# ╔═╡ 5ce1edef-5b0e-48ce-b269-855726cc5e15
-@testset "householder QR" begin
-	A = randn(3, 3)
-	Q = Matrix{Float64}(I, 3, 3)
-	R = copy(A)
-	householder_qr!(Q, R)
-	@info R
-	@test Q * R ≈ A
-	@test Q' * Q ≈ I
-end
-
-# ╔═╡ 296749ef-7973-4ac9-8632-825fccbd3476
-let
-	A = randn(3, 3)
-	g = givens(A, 2, 3)
-	left_mul!(copy(A), g)
-end
-
-# ╔═╡ f3c5297d-c371-41af-988b-595fb47ac4d7
-function givens_qr!(Q::AbstractMatrix, A::AbstractMatrix)
-	m, n = size(A)
-	if m == 1
-		return Q, A
-	else
-		for k = m:-1:2
-			g = givens(A, k-1, k)
-			left_mul!(A, g)
-			right_mul!(Q, g)
-		end
-		givens_qr!(view(Q, :, 2:m), view(A, 2:m, 2:n))
-		return Q, A
-	end
-end
-
-# ╔═╡ bfca07d3-6479-4835-8b10-314facfcfea1
-@testset "givens QR" begin
-	n = 3
-	A = randn(n, n)
-	R = copy(A)
-	Q, R = givens_qr!(Matrix{Float64}(I, n, n), R)
-	@test Q * R ≈ A
-	@test Q * Q' ≈ I
-	@info R
-end
-
-# ╔═╡ 0a753edc-4507-46e8-ab0f-fcdd5f3fa21f
-md"## Gram-Schmidt Orthogonalization"
-
-# ╔═╡ 8bcdaf5f-6e69-471e-9fca-063ece7f563a
-md"""
-```math
-q_k = \left(a_k - \sum_{i=1}^{k-1} r_{ik}q_i\right)/r_{kk}
 ```
-"""
 
-# ╔═╡ e4a1cb08-1e6c-45b1-9937-12b13bba1645
-md"## Algorithm: Classical Gram-Schmidt Orthogonalization"
+In the program, the `abs2` and `sqrt` functions can be treated as primitive functions, which means they should not be further decomposed as more elementary functions.
 
-# ╔═╡ c32925a7-28ca-4c23-9ab8-43db8e0dc0c3
-function classical_gram_schmidt(A::AbstractMatrix{T}) where T
-	m, n = size(A)
-	Q = zeros(T, m, n)
-	R = zeros(T, n, n)
-	R[1, 1] = norm(view(A, :, 1))
-	Q[:, 1] .= view(A, :, 1) ./ R[1, 1]
-	for k = 2:n
-		Q[:, k] .= view(A, :, k)
-		# project z to span(A[:, 1:k-1])⊥
-		for j = 1:k-1
-			R[j, k] = view(Q, :, j)' * view(A, :, k)
-			Q[:, k] .-= view(Q, :, j) .* R[j, k]
-		end
-		# normalize the k-th column
-		R[k, k] = norm(view(Q, :, k))
-		Q[:, k] ./= R[k, k]
-	end
-	return Q, R
+### Tasks
+1. Rewrite the program (on paper or with code) to implement the forward mode autodiff, where you can use the notation $\dot y \equiv (\frac{\partial y}{\partial x_i}, \frac{\partial y}{\partial x_2},\ldots \frac{\partial y}{\partial x_n})$ to denote a derivative.
+
+**Example**
+To compute the gradient of
+```julia
+function f(x, y)
+	a = 2 * x
+	b = sin(a)
+	c = cos(y)
+    return b + c
 end
-
-# ╔═╡ a7a4c219-d4dd-4491-90f9-824924124ff2
-@testset "classical GS" begin
-	n = 10
-	A = randn(n, n)
-	Q, R = classical_gram_schmidt(A)
-	@test Q * R ≈ A
-	@test Q * Q' ≈ I
-	@info R
-end
-
-# ╔═╡ 21f0d7df-396e-47cc-beb8-0fa13fd8bc40
-md"## Algorithm: Modified Gram-Schmidt Orthogonalization"
-
-# ╔═╡ bd12051d-f8ad-4055-8461-b1495ca95ce6
-function modified_gram_schmidt!(A::AbstractMatrix{T}) where T
-	m, n = size(A)
-	Q = zeros(T, m, n)
-	R = zeros(T, n, n)
-	for k = 1:n
-		R[k, k] = norm(view(A, :, k))
-		Q[:, k] .= view(A, :, k) ./ R[k, k]
-		for j = k+1:n
-			R[k, j] = view(Q, :, k)' * view(A, :, j)
-			A[:, j] .-= view(Q, :, k) .* R[k, j]
-		end
-	end
-	return Q, R
-end
-
-# ╔═╡ 8d4e7395-f05b-45dd-b762-da4cd1f40b29
-@testset "modified GS" begin
-	n = 10
-	A = randn(n, n)
-	Q, R = modified_gram_schmidt!(copy(A))
-	@test Q * R ≈ A
-	@test Q * Q' ≈ I
-	@info R
-end
-
-# ╔═╡ cbab862d-f6f1-4238-b007-f1341455a85f
-let
-	n = 100
-	A = randn(n, n)
-	Q1, R1 = classical_gram_schmidt(A)
-	Q2, R2 = modified_gram_schmidt!(copy(A))
-	@info norm(Q1' * Q1 - I)
-	@info norm(Q2' * Q2 - I)
-end
-
-# ╔═╡ c806e238-5f84-4cab-8e13-d9a15d4ee2b0
-md"# Eigenvalue/Singular value decomposition problem"
-
-# ╔═╡ 21d4d322-3af7-4ab2-90a4-b465f009167b
-md"""
-```math
-Ax = \lambda x
 ```
-"""
 
-# ╔═╡ 36e59b38-07a5-43ea-9b73-599f6b78b938
-md"## Power method"
-
-# ╔═╡ e5998180-d4e9-4e9d-a965-b02d92c3a188
-matsize = 10
-
-# ╔═╡ 836f7624-e0b9-4ee3-9f11-a9b148af4266
-A10 = randn(matsize, matsize); A10 += A10'
-
-# ╔═╡ c84c3f0b-8b82-4710-bf27-7667506ef357
-eigen(A10).values
-
-# ╔═╡ deaaf582-3387-41b1-83ba-8290aa84236d
-vmax = eigen(A10).vectors[:,end]
-
-# ╔═╡ 1625ece0-5a1c-416f-b716-68c1f9f9478d
-let
-	x = normalize!(randn(matsize))
-	for i=1:20
-		x = A10 * x
-		normalize!(x)
-	end
-	1-abs2(x' * vmax)
+The forward autodiff rewritten program is
+```julia
+function f_forward((x, ̇̇x), (y, ̇y))
+	(a, ̇a) = (2 * x, 2 * ̇x)
+	(b, ̇b) = (sin(a), cos(a) .* ̇a)
+	(c, ̇c) = （cos(y), -sin(y) .* ̇y）
+    return (b + c, ̇b + ̇c)
 end
-
-# ╔═╡ 5787c430-d48b-43b8-97e4-e95b1d66f578
-md"""
-## Rayleigh Quotient Iteration
-"""
-
-# ╔═╡ 0e874ac9-c3cb-4d65-8424-d425b6ff4748
-let
-	x = normalize!(randn(matsize))
-	U = eigen(A10).vectors
-	for k=1:5
-		sigma = x' * A10 * x
-		y = (A10 - sigma * I) \ x
-		x = normalize!(y)
-	end
-	(x' * U)'
-end
-
-# ╔═╡ 537f7520-4e65-4d9f-8905-697d957f2772
-md"## Symmetric QR decomposition"
-
-# ╔═╡ ca22eba8-be14-40b1-b8fe-ead89b323952
-function householder_trid!(Q, a)
-	m, n = size(a)
-	@assert m==n && size(Q, 2) == n
-	if m == 2
-		return Q, a
-	else
-		# apply householder matrix
-		H = householder_matrix(view(a, 2:n, 1))
-		left_mul!(view(a, 2:n, :), H)
-		right_mul!(view(a, :, 2:n), H')
-		# update Q matrix
-		right_mul!(view(Q, :, 2:n), H')
-		# recurse
-		householder_trid!(view(Q, :, 2:n), view(a, 2:m, 2:n))
-	end
-	return Q, a
-end
-
-# ╔═╡ a5c83d11-580e-4066-9bec-9ed8202e4e46
-@testset "householder tridiagonal" begin
-	n = 5
-	a = randn(n, n)
-	a = a + a'
-	Q = Matrix{Float64}(I, n, n)
-	Q, T = householder_trid!(Q, copy(a))
-	@test Q * T * Q' ≈ a
-end
-
-# ╔═╡ d8fb96fb-bc78-4072-afe9-8427fac0f6ac
-md"""## The SVD algorithm
-```math
-A = U S V^T
 ```
-1. Form $C = A^T A$,
-2. Use the symmetric QR algorithm to compute $V_1^T C V_1 = {\rm diag}(\sigma_i^2)$,
-3. Apply QR with column pivoting to $AV_1$ obtaining $U^T(AV_1)\Pi = R$.
-"""
+2. Rewrite the program (on paper or with code) to implement the reverse mode autodiff, where you can use the notation $\overline y \equiv \frac{\partial \mathcal{L}}{\partial y}$ to denote an adjoint, $y \rightarrow T$ to denote pushing a variable to the global stack, and $y \leftarrow T$ to denote poping a variable from the global stack. In your submission, both the forward pass and backward pass should be included.
+3. Estimate how many intermediate states is cached in your reverse mode autodiff program?
 
-# ╔═╡ ac65b656-8ab5-4866-b011-25711260f110
-md"""
-# Assignments
-### 1. Review
-Suppose that you are computing the QR factorization of the matrix
-```math
-A = \left(\begin{matrix}
-1 & 1 & 1\\
-1 & 2 & 4\\
-1 & 3 & 9\\
-1 & 4 & 16
-\end{matrix}\right)
-```
-by Householder transformations.
-
-* Problems:
-    1. How many Householder transformations are required?
-    2. What does the first column of A become as a result of applying the first Householder transformation?
-    3. What does the first column of A become as a result of applying the second Householder transformation?
-    4. How many Givens rotations would be required to computing the QR factoriazation of A?
-### 2. Coding
-Computing the QR decomposition of a symmetric triangular matrix with Givens rotation. Try to minimize the computing time and estimate the number of FLOPS.
-
-For example, if the input matrix size is $T \in \mathbb{R}^{5\times 5}$
-```math
-T = \left(\begin{matrix}
-t_{11} & t_{12} & 0 & 0 & 0\\
-t_{21} & t_{22} & t_{23} & 0 & 0\\
-0 & t_{32} & t_{33} & t_{34} & 0\\
-0 & 0 & t_{43} & t_{44} & t_{45}\\
-0 & 0 & 0 & t_{54} & t_{55}
-\end{matrix}\right)
-```
-where $t_{ij} = t_{ji}$.
-
-In your algorithm, you should first apply Givens rotation on row 1 and 2.
-```math
-G(t_{11}, t_{21}) T = \left(\begin{matrix}
-t_{11}' & t_{12}' & t_{13}' & 0 & 0\\
-0 & t_{22}' & t_{23}' & 0 & 0\\
-0 & t_{32} & t_{33} & t_{34} & 0\\
-0 & 0 & t_{43} & t_{44} & t_{45}\\
-0 & 0 & 0 & t_{54} & t_{55}
-\end{matrix}\right)
-```
-Then apply $G(t_{22}', t_{32})$ et al.
-"""
+### Reference
+* Griewank A, Walther A. Evaluating derivatives: principles and techniques of algorithmic differentiation[M]. Society for industrial and applied mathematics, 2008.
+"
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
-LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
-Luxor = "ae8d54c2-7ccd-5906-9d76-62fc9837b5bc"
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
+FiniteDifferences = "26cc04aa-876d-5657-8c51-4c34ba976000"
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
-Luxor = "~3.7.0"
-Plots = "~1.38.6"
+BenchmarkTools = "~1.3.2"
+Enzyme = "~0.10.18"
+FiniteDifferences = "~0.12.26"
+ForwardDiff = "~0.10.35"
+Plots = "~1.38.8"
 PlutoUI = "~0.7.50"
 """
 
@@ -893,13 +494,19 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.8.5"
 manifest_format = "2.0"
-project_hash = "f3ccd548493bd3f31c742b8b993a90fd0da8dd95"
+project_hash = "0e5cee4aa40dec1a75bbf8e896ff28c08c4ec1ca"
 
 [[deps.AbstractPlutoDingetjes]]
 deps = ["Pkg"]
 git-tree-sha1 = "8eaf9f1b4921132a4cff3f36a1d9ba923b14a481"
 uuid = "6e696c72-6542-2067-7265-42206c756150"
 version = "1.1.4"
+
+[[deps.Adapt]]
+deps = ["LinearAlgebra", "Requires"]
+git-tree-sha1 = "cc37d689f599e8df4f464b2fa3870ff7db7492ef"
+uuid = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
+version = "3.6.1"
 
 [[deps.ArgTools]]
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
@@ -910,6 +517,12 @@ uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
 
 [[deps.Base64]]
 uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
+
+[[deps.BenchmarkTools]]
+deps = ["JSON", "Logging", "Printf", "Profile", "Statistics", "UUIDs"]
+git-tree-sha1 = "d9a9701b899b30332bbcb3e1679c41cce81fb0e8"
+uuid = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+version = "1.3.2"
 
 [[deps.BitFlags]]
 git-tree-sha1 = "43b1a4a8f797c1cddadf60499a8a077d4af2cd2d"
@@ -922,11 +535,10 @@ git-tree-sha1 = "19a35467a82e236ff51bc17a3a44b69ef35185a2"
 uuid = "6e34b625-4abd-537c-b88f-471c36dfa7a0"
 version = "1.0.8+0"
 
-[[deps.Cairo]]
-deps = ["Cairo_jll", "Colors", "Glib_jll", "Graphics", "Libdl", "Pango_jll"]
-git-tree-sha1 = "d0b3f8b4ad16cb0a2988c6788646a5e6a17b6b1b"
-uuid = "159f3aea-2a34-519c-b102-8c37f9878175"
-version = "1.0.5"
+[[deps.CEnum]]
+git-tree-sha1 = "eb4cb44a499229b3b8426dcfb5dd85333951ff90"
+uuid = "fa961155-64e5-5f13-b03f-caf6b980ea82"
+version = "0.4.2"
 
 [[deps.Cairo_jll]]
 deps = ["Artifacts", "Bzip2_jll", "CompilerSupportLibraries_jll", "Fontconfig_jll", "FreeType2_jll", "Glib_jll", "JLLWrappers", "LZO_jll", "Libdl", "Pixman_jll", "Pkg", "Xorg_libXext_jll", "Xorg_libXrender_jll", "Zlib_jll", "libpng_jll"]
@@ -976,6 +588,12 @@ git-tree-sha1 = "fc08e5930ee9a4e03f84bfb5211cb54e7769758a"
 uuid = "5ae59095-9a9b-59fe-a467-6f913c188581"
 version = "0.12.10"
 
+[[deps.CommonSubexpressions]]
+deps = ["MacroTools", "Test"]
+git-tree-sha1 = "7b8a93dba8af7e3b42fecabf646260105ac373f7"
+uuid = "bbf7d656-a473-5ed7-a52c-81e309532950"
+version = "0.3.0"
+
 [[deps.Compat]]
 deps = ["Dates", "LinearAlgebra", "UUIDs"]
 git-tree-sha1 = "7a60c856b9fa189eb34f5f8a6f6b5529b7942957"
@@ -1011,6 +629,18 @@ uuid = "ade2ca70-3891-5945-98fb-dc099432e06a"
 deps = ["Mmap"]
 uuid = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 
+[[deps.DiffResults]]
+deps = ["StaticArraysCore"]
+git-tree-sha1 = "782dd5f4561f5d267313f23853baaaa4c52ea621"
+uuid = "163ba53b-c6d8-5494-b064-1a9d43ac40c5"
+version = "1.1.0"
+
+[[deps.DiffRules]]
+deps = ["IrrationalConstants", "LogExpFunctions", "NaNMath", "Random", "SpecialFunctions"]
+git-tree-sha1 = "a4ad7ef19d2cdc2eff57abbbe68032b1cd0bd8f8"
+uuid = "b552c78f-8df3-52c6-915a-8e097449b14b"
+version = "1.13.0"
+
 [[deps.DocStringExtensions]]
 deps = ["LibGit2"]
 git-tree-sha1 = "2fb1e02f2b635d0845df5d7c167fec4dd739b00d"
@@ -1022,11 +652,34 @@ deps = ["ArgTools", "FileWatching", "LibCURL", "NetworkOptions"]
 uuid = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
 version = "1.6.0"
 
+[[deps.Enzyme]]
+deps = ["CEnum", "EnzymeCore", "Enzyme_jll", "GPUCompiler", "LLVM", "Libdl", "LinearAlgebra", "ObjectFile", "Printf", "Random"]
+git-tree-sha1 = "6249c3e023101edeb71e5c476c8945bd078e29e2"
+uuid = "7da242da-08ed-463a-9acd-ee780be4f1d9"
+version = "0.10.18"
+
+[[deps.EnzymeCore]]
+deps = ["Adapt"]
+git-tree-sha1 = "238032b8e2a02e06bc8e257ff9484a96db8fea1b"
+uuid = "f151be2c-9106-41f4-ab19-57ee4f262869"
+version = "0.1.0"
+
+[[deps.Enzyme_jll]]
+deps = ["Artifacts", "JLLWrappers", "LazyArtifacts", "Libdl", "Pkg", "TOML"]
+git-tree-sha1 = "ab56cf1c49ca27bce4e4f7cc91889cedfe83bd03"
+uuid = "7cc45869-7501-5eee-bdea-0790c847d4ef"
+version = "0.0.48+1"
+
 [[deps.Expat_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "bad72f730e9e91c08d9427d5e8db95478a3c323d"
 uuid = "2e619515-83b5-522b-bb60-26c02a35a201"
 version = "2.4.8+0"
+
+[[deps.ExprTools]]
+git-tree-sha1 = "c1d06d129da9f55715c6c212866f5b1bddc5fa00"
+uuid = "e2ba6199-217a-4e67-a87a-7c52f15ade04"
+version = "0.1.9"
 
 [[deps.FFMPEG]]
 deps = ["FFMPEG_jll"]
@@ -1040,14 +693,14 @@ git-tree-sha1 = "74faea50c1d007c85837327f6775bea60b5492dd"
 uuid = "b22a6f82-2f65-5046-a5b2-351ab43fb4e5"
 version = "4.4.2+2"
 
-[[deps.FileIO]]
-deps = ["Pkg", "Requires", "UUIDs"]
-git-tree-sha1 = "7be5f99f7d15578798f338f5433b6c432ea8037b"
-uuid = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
-version = "1.16.0"
-
 [[deps.FileWatching]]
 uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
+
+[[deps.FiniteDifferences]]
+deps = ["ChainRulesCore", "LinearAlgebra", "Printf", "Random", "Richardson", "SparseArrays", "StaticArrays"]
+git-tree-sha1 = "3f605dd6db5640c5278f2551afc9427656439f42"
+uuid = "26cc04aa-876d-5657-8c51-4c34ba976000"
+version = "0.12.26"
 
 [[deps.FixedPointNumbers]]
 deps = ["Statistics"]
@@ -1067,6 +720,12 @@ git-tree-sha1 = "8339d61043228fdd3eb658d86c926cb282ae72a8"
 uuid = "59287772-0a20-5a39-b81b-1366585eb4c0"
 version = "0.4.2"
 
+[[deps.ForwardDiff]]
+deps = ["CommonSubexpressions", "DiffResults", "DiffRules", "LinearAlgebra", "LogExpFunctions", "NaNMath", "Preferences", "Printf", "Random", "SpecialFunctions", "StaticArrays"]
+git-tree-sha1 = "00e252f4d706b3d55a8863432e742bf5717b498d"
+uuid = "f6369f11-7733-5829-9624-2563aa707210"
+version = "0.10.35"
+
 [[deps.FreeType2_jll]]
 deps = ["Artifacts", "Bzip2_jll", "JLLWrappers", "Libdl", "Pkg", "Zlib_jll"]
 git-tree-sha1 = "87eb71354d8ec1a96d4a7636bd57a7347dde3ef9"
@@ -1085,17 +744,23 @@ git-tree-sha1 = "d972031d28c8c8d9d7b41a536ad7bb0c2579caca"
 uuid = "0656b61e-2033-5cc2-a64a-77c0f6c09b89"
 version = "3.3.8+0"
 
+[[deps.GPUCompiler]]
+deps = ["ExprTools", "InteractiveUtils", "LLVM", "Libdl", "Logging", "TimerOutputs", "UUIDs"]
+git-tree-sha1 = "19d693666a304e8c371798f4900f7435558c7cde"
+uuid = "61eb1bfa-7361-4325-ad38-22787b887f55"
+version = "0.17.3"
+
 [[deps.GR]]
 deps = ["Artifacts", "Base64", "DelimitedFiles", "Downloads", "GR_jll", "HTTP", "JSON", "Libdl", "LinearAlgebra", "Pkg", "Preferences", "Printf", "Random", "Serialization", "Sockets", "TOML", "Tar", "Test", "UUIDs", "p7zip_jll"]
-git-tree-sha1 = "660b2ea2ec2b010bb02823c6d0ff6afd9bdc5c16"
+git-tree-sha1 = "4423d87dc2d3201f3f1768a29e807ddc8cc867ef"
 uuid = "28b8d3ca-fb5f-59d9-8090-bfdbd6d07a71"
-version = "0.71.7"
+version = "0.71.8"
 
 [[deps.GR_jll]]
 deps = ["Artifacts", "Bzip2_jll", "Cairo_jll", "FFMPEG_jll", "Fontconfig_jll", "GLFW_jll", "JLLWrappers", "JpegTurbo_jll", "Libdl", "Libtiff_jll", "Pixman_jll", "Qt5Base_jll", "Zlib_jll", "libpng_jll"]
-git-tree-sha1 = "d5e1fd17ac7f3aa4c5287a61ee28d4f8b8e98873"
+git-tree-sha1 = "3657eb348d44575cc5560c80d7e55b812ff6ffe1"
 uuid = "d2c73de3-f751-5644-a686-071e5b155ba9"
-version = "0.71.7+0"
+version = "0.71.8+0"
 
 [[deps.Gettext_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl", "Libiconv_jll", "Pkg", "XML2_jll"]
@@ -1108,12 +773,6 @@ deps = ["Artifacts", "Gettext_jll", "JLLWrappers", "Libdl", "Libffi_jll", "Libic
 git-tree-sha1 = "d3b3624125c1474292d0d8ed0f65554ac37ddb23"
 uuid = "7746bdde-850d-59dc-9ae8-88ece973131d"
 version = "2.74.0+2"
-
-[[deps.Graphics]]
-deps = ["Colors", "LinearAlgebra", "NaNMath"]
-git-tree-sha1 = "d61890399bc535850c4bf08e4e0d3a7ad0f21cbd"
-uuid = "a2bd30eb-e257-5431-a919-1863eab51364"
-version = "1.1.2"
 
 [[deps.Graphite2_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1200,12 +859,6 @@ git-tree-sha1 = "6f2675ef130a300a112286de91973805fcc5ffbc"
 uuid = "aacddb02-875f-59d6-b918-886e6ef4fbf8"
 version = "2.1.91+0"
 
-[[deps.Juno]]
-deps = ["Base64", "Logging", "Media", "Profile"]
-git-tree-sha1 = "07cb43290a840908a771552911a6274bc6c072c7"
-uuid = "e5e0dc1b-0480-54bc-9374-aad01c23163d"
-version = "0.8.4"
-
 [[deps.LAME_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "f6250b16881adf048549549fba48b1161acdac8c"
@@ -1217,6 +870,18 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "bf36f528eec6634efc60d7ec062008f171071434"
 uuid = "88015f11-f218-50d7-93a8-a6af411a945d"
 version = "3.0.0+1"
+
+[[deps.LLVM]]
+deps = ["CEnum", "LLVMExtra_jll", "Libdl", "Printf", "Unicode"]
+git-tree-sha1 = "f044a2796a9e18e0531b9b3072b0019a61f264bc"
+uuid = "929cbde3-209d-540e-8aea-75f648917ca0"
+version = "4.17.1"
+
+[[deps.LLVMExtra_jll]]
+deps = ["Artifacts", "JLLWrappers", "LazyArtifacts", "Libdl", "TOML"]
+git-tree-sha1 = "070e4b5b65827f82c16ae0916376cb47377aa1b5"
+uuid = "dad2f222-ce93-54a1-a47d-0025e8a3acab"
+version = "0.0.18+0"
 
 [[deps.LZO_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1234,6 +899,10 @@ deps = ["Formatting", "InteractiveUtils", "LaTeXStrings", "MacroTools", "Markdow
 git-tree-sha1 = "2422f47b34d4b127720a18f86fa7b1aa2e141f29"
 uuid = "23fbe1c1-3f47-55db-b15f-69d7ec21a316"
 version = "0.15.18"
+
+[[deps.LazyArtifacts]]
+deps = ["Artifacts", "Pkg"]
+uuid = "4af54fe1-eca0-43a8-85a7-787d91b784e3"
 
 [[deps.LibCURL]]
 deps = ["LibCURL_jll", "MozillaCACerts_jll"]
@@ -1293,12 +962,6 @@ git-tree-sha1 = "9c30530bf0effd46e15e0fdcf2b8636e78cbbd73"
 uuid = "4b2f31a3-9ecc-558c-b454-b3730dcb73e9"
 version = "2.35.0+0"
 
-[[deps.Librsvg_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pango_jll", "Pkg", "gdk_pixbuf_jll"]
-git-tree-sha1 = "ae0923dab7324e6bc980834f709c4cd83dd797ed"
-uuid = "925c91fb-5dd6-59dd-8e8c-345e74382d89"
-version = "2.54.5+0"
-
 [[deps.Libtiff_jll]]
 deps = ["Artifacts", "JLLWrappers", "JpegTurbo_jll", "LERC_jll", "Libdl", "Pkg", "Zlib_jll", "Zstd_jll"]
 git-tree-sha1 = "3eb79b0ca5764d4799c06699573fd8f533259713"
@@ -1329,12 +992,6 @@ deps = ["Dates", "Logging"]
 git-tree-sha1 = "cedb76b37bc5a6c702ade66be44f831fa23c681e"
 uuid = "e6f89c97-d47a-5376-807f-9c37f3926c36"
 version = "1.0.0"
-
-[[deps.Luxor]]
-deps = ["Base64", "Cairo", "Colors", "Dates", "FFMPEG", "FileIO", "Juno", "LaTeXStrings", "Random", "Requires", "Rsvg", "SnoopPrecompile"]
-git-tree-sha1 = "909a67c53fddd216d5e986d804b26b1e3c82d66d"
-uuid = "ae8d54c2-7ccd-5906-9d76-62fc9837b5bc"
-version = "3.7.0"
 
 [[deps.MIMEs]]
 git-tree-sha1 = "65f28ad4b594aebe22157d6fac869786a255b7eb"
@@ -1367,12 +1024,6 @@ git-tree-sha1 = "c13304c81eec1ed3af7fc20e75fb6b26092a1102"
 uuid = "442fdcdd-2543-5da2-b0f3-8c86c306513e"
 version = "0.3.2"
 
-[[deps.Media]]
-deps = ["MacroTools", "Test"]
-git-tree-sha1 = "75a54abd10709c01f1b86b84ec225d26e840ed58"
-uuid = "e89f7d12-3494-54d1-8411-f7d8b9ae1f27"
-version = "0.5.0"
-
 [[deps.Missings]]
 deps = ["DataAPI"]
 git-tree-sha1 = "f66bdc5de519e8f8ae43bdc598782d35a25b1272"
@@ -1395,6 +1046,12 @@ version = "1.0.2"
 [[deps.NetworkOptions]]
 uuid = "ca575930-c2e3-43a9-ace4-1e988b2c1908"
 version = "1.2.0"
+
+[[deps.ObjectFile]]
+deps = ["Reexport", "StructIO"]
+git-tree-sha1 = "55ce61d43409b1fb0279d1781bf3b0f22c83ab3b"
+uuid = "d8793406-e978-5875-9003-1fc021f44a92"
+version = "0.3.7"
 
 [[deps.Ogg_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1437,20 +1094,14 @@ uuid = "91d4177d-7536-5919-b921-800302f37372"
 version = "1.3.2+0"
 
 [[deps.OrderedCollections]]
-git-tree-sha1 = "85f8e6578bf1f9ee0d11e7bb1b1456435479d47c"
+git-tree-sha1 = "d78db6df34313deaca15c5c0b9ff562c704fe1ab"
 uuid = "bac558e1-5e72-5ebc-8fee-abe8a469f55d"
-version = "1.4.1"
+version = "1.5.0"
 
 [[deps.PCRE2_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "efcefdf7-47ab-520b-bdef-62a2eaa19f15"
 version = "10.40.0+0"
-
-[[deps.Pango_jll]]
-deps = ["Artifacts", "Cairo_jll", "Fontconfig_jll", "FreeType2_jll", "FriBidi_jll", "Glib_jll", "HarfBuzz_jll", "JLLWrappers", "Libdl", "Pkg"]
-git-tree-sha1 = "84a314e3926ba9ec66ac097e3635e270986b0f10"
-uuid = "36c8627f-9965-5494-a995-c6b170f724f3"
-version = "1.50.9+0"
 
 [[deps.Parsers]]
 deps = ["Dates", "SnoopPrecompile"]
@@ -1488,9 +1139,9 @@ version = "1.3.4"
 
 [[deps.Plots]]
 deps = ["Base64", "Contour", "Dates", "Downloads", "FFMPEG", "FixedPointNumbers", "GR", "JLFzf", "JSON", "LaTeXStrings", "Latexify", "LinearAlgebra", "Measures", "NaNMath", "Pkg", "PlotThemes", "PlotUtils", "Preferences", "Printf", "REPL", "Random", "RecipesBase", "RecipesPipeline", "Reexport", "RelocatableFolders", "Requires", "Scratch", "Showoff", "SnoopPrecompile", "SparseArrays", "Statistics", "StatsBase", "UUIDs", "UnicodeFun", "Unzip"]
-git-tree-sha1 = "cfcd24ebf8b066b4f8e42bade600c8558212ed83"
+git-tree-sha1 = "f49a45a239e13333b8b936120fe6d793fe58a972"
 uuid = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
-version = "1.38.7"
+version = "1.38.8"
 
 [[deps.PlutoUI]]
 deps = ["AbstractPlutoDingetjes", "Base64", "ColorTypes", "Dates", "FixedPointNumbers", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "MIMEs", "Markdown", "Random", "Reexport", "URIs", "UUIDs"]
@@ -1555,11 +1206,11 @@ git-tree-sha1 = "838a3a4188e2ded87a4f9f184b4b0d78a1e91cb7"
 uuid = "ae029012-a4dd-5104-9daa-d747884805df"
 version = "1.3.0"
 
-[[deps.Rsvg]]
-deps = ["Cairo", "Glib_jll", "Librsvg_jll"]
-git-tree-sha1 = "3d3dc66eb46568fb3a5259034bfc752a0eb0c686"
-uuid = "c4c386cf-5103-5370-be45-f3a111cca3b8"
-version = "1.0.0"
+[[deps.Richardson]]
+deps = ["LinearAlgebra"]
+git-tree-sha1 = "e03ca566bec93f8a3aeb059c8ef102f268a38949"
+uuid = "708f8203-808e-40c0-ba2d-98a6953ed40d"
+version = "1.4.0"
 
 [[deps.SHA]]
 uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
@@ -1610,6 +1261,17 @@ git-tree-sha1 = "ef28127915f4229c971eb43f3fc075dd3fe91880"
 uuid = "276daf66-3868-5448-9aa4-cd146d93841b"
 version = "2.2.0"
 
+[[deps.StaticArrays]]
+deps = ["LinearAlgebra", "Random", "StaticArraysCore", "Statistics"]
+git-tree-sha1 = "b8d897fe7fa688e93aef573711cb207c08c9e11e"
+uuid = "90137ffa-7385-5640-81b9-e52037218182"
+version = "1.5.19"
+
+[[deps.StaticArraysCore]]
+git-tree-sha1 = "6b7ba252635a5eff6a0b0664a41ee140a1c9e72a"
+uuid = "1e83bf80-4336-4d27-bf5d-d5a4f845583c"
+version = "1.4.0"
+
 [[deps.Statistics]]
 deps = ["LinearAlgebra", "SparseArrays"]
 uuid = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
@@ -1625,6 +1287,12 @@ deps = ["DataAPI", "DataStructures", "LinearAlgebra", "LogExpFunctions", "Missin
 git-tree-sha1 = "d1bf48bfcc554a3761a133fe3a9bb01488e06916"
 uuid = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 version = "0.33.21"
+
+[[deps.StructIO]]
+deps = ["Test"]
+git-tree-sha1 = "010dc73c7146869c042b49adcdb6bf528c12e859"
+uuid = "53d494c1-5632-5724-8f4c-31dff12d585f"
+version = "0.3.0"
 
 [[deps.TOML]]
 deps = ["Dates"]
@@ -1645,6 +1313,12 @@ version = "0.1.1"
 [[deps.Test]]
 deps = ["InteractiveUtils", "Logging", "Random", "Serialization"]
 uuid = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[[deps.TimerOutputs]]
+deps = ["ExprTools", "Printf"]
+git-tree-sha1 = "f2fd3f288dfc6f507b0c3a2eb3bac009251e548b"
+uuid = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
+version = "0.5.22"
 
 [[deps.TranscodingStreams]]
 deps = ["Random", "Test"]
@@ -1847,12 +1521,6 @@ git-tree-sha1 = "868e669ccb12ba16eaf50cb2957ee2ff61261c56"
 uuid = "214eeab7-80f7-51ab-84ad-2988db7cef09"
 version = "0.29.0+0"
 
-[[deps.gdk_pixbuf_jll]]
-deps = ["Artifacts", "Glib_jll", "JLLWrappers", "JpegTurbo_jll", "Libdl", "Libtiff_jll", "Pkg", "Xorg_libX11_jll", "libpng_jll"]
-git-tree-sha1 = "e9190f9fb03f9c3b15b9fb0c380b0d57a3c8ea39"
-uuid = "da03df04-f53b-5353-a52f-6a8b0620ced0"
-version = "2.42.8+0"
-
 [[deps.libaom_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "3a2ea60308f0996d26f1e5354e10c24e9ef905d4"
@@ -1918,135 +1586,62 @@ version = "1.4.1+0"
 """
 
 # ╔═╡ Cell order:
-# ╠═03d7776f-1ae1-4305-8638-caa82837166a
-# ╟─c91e28af-d372-429b-b0c1-e6579b6230d4
-# ╟─50272a9d-5040-413c-84f5-69ffe06b133a
-# ╟─db07252c-d1c1-46af-a16e-9a7d1e91ce4f
-# ╟─039e70f8-b8cf-11ed-311e-4d770652d6a9
-# ╟─1285a0ff-2290-49fb-bd16-74ebb155e6ff
-# ╟─c12b4f4e-81d7-4b8a-8f77-b4e940199064
-# ╟─19083b13-3b40-43ea-9535-975c2f1be8bb
-# ╠═3bc7e1c5-4d06-4b2d-adbd-20935f8c54b2
-# ╠═69ea48d1-58c2-4e7d-a351-c4d96dcbed55
-# ╠═f375e09d-cfe2-4ca8-a2c1-32d11dd0b236
-# ╠═42fd3d15-40b6-4051-913b-293bd953028c
-# ╟─26461708-def3-44b5-bb8f-4eb9f75c66d5
-# ╟─f0b7e196-80dd-4cd2-a8ce-3b99eee32580
-# ╠═af03fa73-40ce-45f5-9f4f-d8c7809f7166
-# ╟─e4e444bf-0d07-4f6c-a104-ac0569928347
-# ╟─5124f2d6-37e3-4cf9-82df-eb50372271cb
-# ╟─dbd8e759-f5bf-4239-843f-2c394e7665c1
-# ╟─58834440-1e0a-432b-9be2-41db98fa2742
-# ╟─81b6f4cb-a6c8-4a86-91f7-ac88646651f8
-# ╠═c4b34c32-fc00-4a7c-8089-edd35c23bd65
-# ╟─291caf11-bacd-4171-8408-410b50f49183
-# ╠═42812c21-229f-4e4a-b7ad-0d0317061776
-# ╟─800b3257-0449-4d0d-8124-5b6ca7882902
-# ╠═7209792f-4944-4d06-9098-ae7ce1cea103
-# ╟─e6435900-79be-46de-a7aa-7308df1e486a
-# ╠═5c3d483b-c1a4-4af9-b06f-f01b306d383b
-# ╠═4979c507-72c3-4cbb-8a7e-27cf4c9c4660
-# ╠═d9a623cd-74fb-4404-8f62-30ed24a82ed7
-# ╠═078d0638-7540-4ca4-bc11-b77b2c7f28c4
-# ╠═72cb2367-c4bc-4ed1-b942-4144881e558f
-# ╠═0653d1cc-febe-4b97-9cea-ccf1ea5ef77c
-# ╟─6d7d33ff-1b2b-4f03-b4d4-a7f31dfd3b74
-# ╟─1684bff0-7ad0-4921-be48-a4bfdcbde81d
-# ╟─eeb922e4-2e63-4d97-88c8-3951613695f5
-# ╟─a5034aeb-e74e-47ed-9d0a-4eb3d076dfbe
-# ╟─bb097284-3e30-489c-abac-f0c6b71edfd9
-# ╟─0f6b8814-77a1-4b1f-8183-42bc6ea412e0
-# ╟─04acb542-dc1f-4c45-b6fd-62f387a81963
-# ╟─080677b7-cac7-4bbe-a4b0-71e18ca41b1b
-# ╠═3cfd45c5-4618-4b9a-a931-0b0cb7f12cf1
-# ╠═78bd6ebd-a710-4cbb-a2a4-6ac663eb64d5
-# ╟─5933200f-5aab-4937-b3df-9af1f81a5eaf
-# ╠═7e8d4ef5-6b3a-4588-8e1b-5a491860f9f9
-# ╠═8e07091c-0b4b-490a-9cf7-dad94c3fa08a
-# ╟─68d9c2b1-bccf-48ec-9428-e0c65a1618ad
-# ╟─96f7d3c9-fecc-4b5e-94ff-e8e9af74ce63
-# ╟─cb7a0e40-0d26-4330-abd0-cd730261b6b4
-# ╠═f240e540-65a2-4f82-8006-a1d2a9955d1b
-# ╠═f4acf2cd-a183-4986-91f5-da6729759c84
-# ╟─b0c7ed86-2127-46a6-9f98-547cdf591d23
-# ╟─b84c4a00-37ea-453a-b69d-555ffcd8b358
-# ╠═135c30d2-2168-4e88-82e3-673bbb4764d9
-# ╠═8782019c-f4b4-4b68-9d84-61aec009fe50
-# ╠═573b545b-314a-4938-8ae8-1be006a918ae
-# ╠═7d4d74ed-2de8-4b95-88c4-92d1398a7c4c
-# ╟─7b48e6ea-6fb7-44b5-9407-1fb38bf4f009
-# ╟─64be680f-3a97-4b92-b3fd-9c7a27bccb01
-# ╟─6d519ffa-ea7e-4a95-a50f-f9421651cd20
-# ╠═d5812ce2-6333-4777-8016-7978af44a753
-# ╠═4e6a21ac-a27a-48a9-b714-6f66b24437c1
-# ╠═a10a2522-c4ea-4027-bbd3-3d0762341424
-# ╟─a2832af2-c007-45d4-8fd7-210f85e3913e
-# ╟─2ee2e080-659d-4d85-9733-065efe6d4ce8
-# ╟─73bd9d1b-4890-48cf-8ecb-83dd6e8025ba
-# ╟─93c9f34c-ce1d-4940-8a24-1a5ce8aa7e01
-# ╠═24ace4f1-3801-4586-93cb-dcaecf1df9a3
-# ╠═32258e09-1dd7-4954-be0f-98db3c2fb7ed
-# ╠═0322976d-d3a2-42ba-ab55-8d75796b0388
-# ╠═525d5273-e10f-4669-afc4-7a527ff25acf
-# ╠═d9a7fbb0-243e-452c-ad23-ed116bf1849c
-# ╠═64a46e12-ae2e-445f-b870-3389e15bcc5b
-# ╠═0c263746-b0a3-42df-a52b-9f9f51341db2
-# ╠═9c9ea963-64db-437d-8509-d334b27b57d4
-# ╠═db6114bc-b253-4c7b-948c-1ad2036fd4b8
-# ╠═6c2555d4-5d84-42e0-8dd3-6e5781037a95
-# ╠═6e6b7827-86a1-4f20-801e-7d9c385d0d26
-# ╟─eb46cec9-5812-43aa-b192-2c84d5c5061e
-# ╟─d7c22484-3970-4c11-864c-a582d4034f7d
-# ╠═f0dabeb6-2c30-4556-aeb8-03c51106f012
-# ╠═a20de17c-33ca-4807-918f-3a58d641ed69
-# ╟─edecc73a-021f-4e0e-8d2e-dbafe537f0eb
-# ╟─d9331fb3-8c04-4082-bdf5-0a1d09a65276
-# ╠═e6cd8de6-20c6-4d36-93ba-b1a9ed808fc2
-# ╠═5ce1edef-5b0e-48ce-b269-855726cc5e15
-# ╟─c10b85f2-be07-4fd4-a66c-50ac8e54fdb8
-# ╠═c0992773-4324-4c22-a806-9ec7bd135a2f
-# ╠═2d41b937-1406-4db8-a453-f0d7ca042434
-# ╠═51e387ff-1619-4c3f-8e52-748c0bddd9cf
-# ╟─925d3781-a469-4943-b951-1688d705cb97
-# ╠═bef1e66b-bf43-4e05-a286-693626c61ea6
-# ╠═874cbe3e-516e-4f8c-8ad8-e781a5d4af0d
-# ╟─50bfec97-0cf8-4a6e-a0e1-13ee391dce69
-# ╠═7ae46225-cbbb-4595-adbc-7fd679bf965f
-# ╠═385a17c7-2394-492a-8e89-0f402311f5c4
-# ╟─06627dd0-f22d-4fe5-8050-d0a84cac12fe
-# ╟─963cb350-b9b5-4dbe-8b5f-63ce38440e86
-# ╠═5d40252a-4dc3-420d-bd8d-d11abdb07c9b
-# ╠═64695822-e79c-4e34-912f-2179c674116d
-# ╠═16ee76bf-3968-414b-aa0f-e82fbf3f7911
-# ╠═b2e92d06-8731-491c-adbe-ec9f778247c1
-# ╠═d55be015-9a20-4efd-9be2-a5ecf9545400
-# ╠═92e842e9-42b8-45e6-937e-3d2049df9b09
-# ╠═296749ef-7973-4ac9-8632-825fccbd3476
-# ╠═f3c5297d-c371-41af-988b-595fb47ac4d7
-# ╠═bfca07d3-6479-4835-8b10-314facfcfea1
-# ╟─0a753edc-4507-46e8-ab0f-fcdd5f3fa21f
-# ╟─8bcdaf5f-6e69-471e-9fca-063ece7f563a
-# ╟─e4a1cb08-1e6c-45b1-9937-12b13bba1645
-# ╠═c32925a7-28ca-4c23-9ab8-43db8e0dc0c3
-# ╠═a7a4c219-d4dd-4491-90f9-824924124ff2
-# ╟─21f0d7df-396e-47cc-beb8-0fa13fd8bc40
-# ╠═bd12051d-f8ad-4055-8461-b1495ca95ce6
-# ╠═8d4e7395-f05b-45dd-b762-da4cd1f40b29
-# ╠═cbab862d-f6f1-4238-b007-f1341455a85f
-# ╟─c806e238-5f84-4cab-8e13-d9a15d4ee2b0
-# ╟─21d4d322-3af7-4ab2-90a4-b465f009167b
-# ╟─36e59b38-07a5-43ea-9b73-599f6b78b938
-# ╠═e5998180-d4e9-4e9d-a965-b02d92c3a188
-# ╠═836f7624-e0b9-4ee3-9f11-a9b148af4266
-# ╠═c84c3f0b-8b82-4710-bf27-7667506ef357
-# ╠═deaaf582-3387-41b1-83ba-8290aa84236d
-# ╠═1625ece0-5a1c-416f-b716-68c1f9f9478d
-# ╟─5787c430-d48b-43b8-97e4-e95b1d66f578
-# ╠═0e874ac9-c3cb-4d65-8424-d425b6ff4748
-# ╟─537f7520-4e65-4d9f-8905-697d957f2772
-# ╠═ca22eba8-be14-40b1-b8fe-ead89b323952
-# ╠═a5c83d11-580e-4066-9bec-9ed8202e4e46
-# ╟─d8fb96fb-bc78-4072-afe9-8427fac0f6ac
-# ╟─ac65b656-8ab5-4866-b011-25711260f110
+# ╟─838b51c0-3987-4fb4-b8b8-1799f724ecd6
+# ╟─385dda1d-8cab-42ee-9242-132032d66b7f
+# ╟─f2e3f609-33ff-4798-bf6b-f69ab5209519
+# ╟─79921035-aafb-478c-ba36-e5655a4515dd
+# ╟─1dace657-b9ca-4ec2-81c9-209c823e9adb
+# ╟─f76cf1c5-3801-4c6d-ba10-195a69e63e45
+# ╟─86874020-ec91-44c1-83cc-483cb0cd9337
+# ╟─ada143c0-40a1-457f-b680-be9edb3e93c8
+# ╟─89915416-29bc-47c4-b11e-c70be1ef858b
+# ╟─29415653-52fc-4210-9cca-551c6f5d4d2c
+# ╟─53c29044-94d3-4470-bacb-e72bd2401d1c
+# ╠═8da8ed7e-bfd2-4be0-a764-ad04566b9632
+# ╟─c28f22cc-71b7-4339-8c81-9d76d2244c94
+# ╠═45bc0bb7-fcd1-4527-a51f-05ab7df03dc8
+# ╠═ff53a172-634f-438f-a04a-1481ac20f140
+# ╠═c763e489-a6a9-42ac-8da1-a2ba48a0f1a8
+# ╠═5e782b60-3721-40d2-ae61-69edb4fc50f0
+# ╟─1d2a3579-b9c4-4ffb-819c-2689d3f1b83c
+# ╟─742504f5-8ae3-4388-8f05-f0a256815cbc
+# ╟─1fbdd9c5-fb52-4bcc-9a6a-156ab8bfe4f6
+# ╠═cee92def-01e4-4199-a964-b81412a0563f
+# ╠═b2d72996-27a0-467e-8c2d-20afcc28b24c
+# ╠═62dd6d53-7f55-4933-95ae-2350d1992cf6
+# ╠═84182832-c653-49df-aa55-a78181974612
+# ╠═4647fb94-2b5d-467a-8952-5aba5da87527
+# ╠═78e9ebd0-92eb-4fdc-b440-56b4fdaf7a60
+# ╟─54f754d5-6cb4-47ef-9b19-aa8c47c14b36
+# ╟─f25a2d8e-5cd5-4df7-bd39-2830d6e2dea6
+# ╠═f6cd50b4-ce0a-11ed-01cf-63021b4eb012
+# ╠═4b3a4f50-4339-43e5-9bc1-473151c1f436
+# ╠═9359eddc-bfbb-428d-8197-00d1e9cd8eeb
+# ╟─bbadece5-e92a-42f5-998c-6149c067b130
+# ╟─2ec9461e-c7a3-43f5-9fef-fb52980fa196
+# ╠═4d5d8755-7774-4364-aba4-cb69ed898809
+# ╠═d2222941-f31b-4411-aac8-6de450aa2fbe
+# ╠═5db5eef5-d217-4a61-9230-62ada8b7606f
+# ╟─0956c11a-63d7-4ab1-a99b-9056208759ac
+# ╟─38cc8a4d-0107-4dee-b0f0-76959ad9cc92
+# ╟─17e21230-2299-4dda-87ef-40e629d66213
+# ╟─38ca5970-78ed-495b-9d69-74a6a22ec027
+# ╠═18065ade-1e2d-4b37-a075-8de966de306d
+# ╠═4a4d5c19-a784-4285-8ea0-f2203cd80eb3
+# ╟─298873a4-ba02-43c3-9507-ce99a00f7245
+# ╟─62484b76-033b-455a-bf51-d1f57adbc8a0
+# ╟─52fa22a0-98ae-4d32-884d-b40cdb9cff62
+# ╟─721bfffc-b76f-4d0d-8ed6-be0c327eef59
+# ╠═0aaa152e-29cf-43f4-8a07-ad7dd4a5f304
+# ╠═ee1f777e-c8fb-4139-aae8-503ed4fd2391
+# ╟─88199efc-975c-4971-8481-3319209bf139
+# ╟─3d1bfe11-a863-4a63-9bb7-0a052dc04d25
+# ╟─0e1de67c-592a-408d-849f-984dd47664cd
+# ╟─164c3f50-cb0c-4f74-8580-303dedbc712b
+# ╟─b648761c-1fa7-4e70-b0d6-654c51b2935f
+# ╟─2fac953b-7a04-4fc1-a54d-a2062b590b20
+# ╟─18ae2723-f947-4ff6-864e-2dd4a0bb32f9
+# ╟─02ca5e2f-1705-4de8-bd89-0b4b69e1fee7
+# ╟─2f715b1a-2e32-4068-86fd-912d735b307a
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
